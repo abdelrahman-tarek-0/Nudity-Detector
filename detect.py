@@ -32,19 +32,16 @@ def detector(path, meta={
                 return {'message': 'No nudity detected', 'is_nudity': False}
 
     if meta['type'] == "image":
-        result = nude_detector.detect(path)
+        image = cv2.imread(path)
+        result = nude_detector.detect(image)
         return analyze_result(result, meta['intensity'])
     
     if meta['type'] == "test":
-        result = nude_detector.detect(path)
+        image = cv2.imread(path)
+        result = nude_detector.detect(image)
         return result
 
     if meta['type'] == "video":
-        try:
-            if not os.path.exists('buffer'):
-                os.makedirs('buffer')
-        except OSError:
-            print('Error: Creating directory of buffer')
 
         currentframe = 0
         cam = cv2.VideoCapture(path)
@@ -58,60 +55,62 @@ def detector(path, meta={
         else:
             frame_interval = 1
 
+        nudity_frames_count = 0
+        frames_count = 0
+
         while True:
             ret, frame = cam.read()
+
             if ret:
                 if currentframe % frame_interval == 0:
-                    name = './buffer/frame' + str(currentframe) + '.jpg'
-                    cv2.imwrite(name, frame)
-                    images.append(name)
+
+                    result = nude_detector.detect(frame)
+                    analysis = analyze_result(result, meta['intensity'])
+
+                    if analysis['is_nudity']:
+                        nudity_frames_count += 1
+
+                    if 'frames' not in meta['exclude']:
+                        frames_results.append({'frame': currentframe, 'result': analysis})
+
+                    frames_count += 1
+
                 currentframe += 1
             else:
                 break
 
-        nudity_frames_count = 0
-        for image in images:
-            result = nude_detector.detect(image)
-            analysis = analyze_result(result, meta['intensity'])
-            if analysis['is_nudity']:
-                nudity_frames_count += 1
-
-            if 'frames' not in meta['exclude']:
-                frames_results.append({'frame': image, 'result': analysis})
-
-        probability = nudity_frames_count / len(images) * 100
+        probability = nudity_frames_count / frames_count * 100
         
-        if not meta['keep_buffer']:
-            os.system('rm -rf buffer')
 
         return {
             'message': f"Detected nudity with {probability}% probability",
             'is_nudity': probability > 50,
             'probability': probability,
             'frames': frames_results,
-            'total_frames': len(images),
+            'total_frames': frames_count,
         }
 
-# print(detector('buffer/frame16005.jpg', {
-#     'type': "test",
+print(detector('test-images/image.png', {
+    'type': "image",
+    'intensity': 0.5,
 
-# }))
+}))
 
-test = detector('INTENSE.mp4', {
-    'type': "video",
-    'intensity': 0.1,
-    'interval': 5,
-    'keep_buffer': False,
-    'exclude' : ['frames']
-})
+# test = detector('test-videos/video.mp4', {
+#     'type': "video",
+#     'intensity': 0.1,
+#     'interval': 5,
+#     'keep_buffer': False,
+#     'exclude' : []
+# })
 
-print(
-    test['message'],'\n',
-    test['is_nudity'],'\n',
-    test['probability'],'\n',
-    test['total_frames'],'\n',
-)
+# print(
+#     test['message'],'\n',
+#     test['is_nudity'],'\n',
+#     test['probability'],'\n',
+#     test['total_frames'],'\n',
+# )
 
-for frame in test['frames']:
-    print(frame['frame'], frame['result']['message'])
+# for frame in test['frames']:
+#     print(frame['frame'], frame['result'])
 
